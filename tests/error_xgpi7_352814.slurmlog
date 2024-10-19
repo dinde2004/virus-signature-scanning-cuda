@@ -1,0 +1,12 @@
+Starting to read sample FASTQ file
+Starting to read signature FASTA file
+Read 2020 samples and 1000 signatures.
+Starting timing and matching...
+runMatcher completed.
+(FOR AUTOMATED CHECKING) Total runMatcher time:2.59887s
+Starting to read sample FASTQ file
+Starting to read signature FASTA file
+Read 2020 samples and 1000 signatures.
+Starting timing and matching...
+runMatcher completed.
+(FOR AUTOMATED CHECKING) Total runMatcher time:3.56988s
