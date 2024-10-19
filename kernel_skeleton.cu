@@ -24,7 +24,9 @@ __global__ void matchStringsKernel(char **d_samples, int *sample_lengths,
             double match_score_local = 0;
             for (int j = 0; j < signature_len; j++)
             {
-                if (d_samples[sample_idx][i + j] != d_signatures[signature_idx][j])
+                if (d_samples[sample_idx][i + j] != d_signatures[signature_idx][j] &&
+                    d_sample_qualities[sample_idx][i + j] != 'N' &&
+                    d_signatures[signature_idx][j] != 'N')
                 {
                     match_found = false;
                     break;
@@ -165,6 +167,7 @@ void runMatcher(const std::vector<klibpp::KSeq> &samples, const std::vector<klib
 
     cudaFree(d_samples);
     cudaFree(d_signatures);
+    cudaFree(d_sample_qualities);
     cudaFree(d_sample_lengths);
     cudaFree(d_signature_lengths);
     cudaFree(d_match_matrix);
