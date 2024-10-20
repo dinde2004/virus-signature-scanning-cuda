@@ -21,7 +21,7 @@ make
 
 # Run the implementation
 echo -e "\n====> Running...\n"
-for i in {0..9}
+for i in {1..30}
 do
     ./matcher tests/samp_${i}.fastq tests/sig_${i}.fasta > tests/out_${i}.out
 done
@@ -29,3 +29,5 @@ done
 echo -e "\n====> Finished running.\n"
 
 echo -e "\nJob completed at $(date)"
+
+# srun --ntasks 1 --cpus-per-task 1 --cpu_bind core --mem 20G --gpus h100-96 --constraint xgpi

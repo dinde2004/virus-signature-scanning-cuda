@@ -17,7 +17,7 @@ nvidia-smi
 
 # Run the benchmark
 echo -e "\n====> Running...\n"
-for i in {0..9}
+for i in {1..30}
 do
     ./bench-h100 tests/samp_${i}.fastq tests/sig_${i}.fasta > tests/out_${i}.ans
 done
