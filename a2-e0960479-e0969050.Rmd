@@ -1,0 +1,110 @@
+---
+title: "CS3210 - Assignment 2"
+author: "Doan Quoc Thinh (e0960479), Nguyen Cao Duy (e0969050)"
+date: "2024-10-21"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, include = TRUE,
+                      fig.align = "center",  out.width = "80%", echo = FALSE)
+library(tidyverse)
+library(patchwork)
+```
+
+## Performance Optimization
+
+### Optimization 1: Caching unchanged velocity particles
+
+In each timestep, we need to have a while loop to check for collisions. However, if there are 2 particles that does not change their velocities, so we know that it is not collide together in the next turn, so we are going to cache it. We realize that collision between 2 particles only occurs in an iteration when in its previous iteration, the velocity of at least one of them has been changed. Therefore, in each iteration, when we come to a particle which velocity is not changed, we skip it. If it gets velocity changed, another particle with velocity changed in the previous turn will be responsible to find that particle and change it. This has reduced so many redundant checks between particles, when unchanged velocity particles are cached and skipped.
+
+```{r}
+data_1 <- read_csv("report_data/optimization/a100-40.csv") %>% 
+  pivot_longer(cols = -Test, names_to = "Version", values_to = "Time")
+data_2 <- read_csv("report_data/optimization/h100-96.csv") %>% 
+  pivot_longer(cols = -Test, names_to = "Version", values_to = "Time")
+
+# Create the box plot
+plot_1 <- ggplot(data_1, aes(x = Version, y = Time)) +
+  geom_boxplot() +
+  labs(title = "A100-40", x = "Version", y = "Runtime (s)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+plot_2 <- ggplot(data_2, aes(x = Version, y = Time)) +
+  geom_boxplot() +
+  labs(title = "H100-96", x = "Version", y = "Runtime (s)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+plot <- plot_1 + plot_2
+plot
+```
+
+\newpage
+## Appendix
+
+### Result Reproduction
+
+#### Input
+
+Input tests can be generated using the `gpu_gen.sh` script where we create 30 random tests with different parameters. Part of the script is shown below for reference. Take note of the composition of the tests.
+
+```bash
+# Random no wildcards tests
+for i in {1..10}
+do
+    ./gen_sig 1000 3000 10000 0.0 > tests/sig_${i}.fasta
+    ./gen_sample tests/sig_${i}.fasta 2000 20 1 2 100000 200000 10 30 0.0 > tests/samp_${i}.fastq
+done
+
+# Random wildcards tests
+for i in {11..20}
+do
+    ./gen_sig 1000 3000 10000 0.1 > tests/sig_${i}.fasta
+    ./gen_sample tests/sig_${i}.fasta 2000 20 1 2 100000 200000 10 30 0.1 > tests/samp_${i}.fastq
+done
+
+# Extreme min tests (2 tests with no wildcards + 3 tests with wildcards)
+for i in {21..22}
+do
+    ./gen_sig 500 3000 3000 0.0 > tests/sig_${i}.fasta
+    ./gen_sample tests/sig_${i}.fasta 980 20 1 2 100000 100000 10 30 0.0 > tests/samp_${i}.fastq
+done
+for i in {23..25}
+do
+    ./gen_sig 500 3000 3000 0.1 > tests/sig_${i}.fasta
+    ./gen_sample tests/sig_${i}.fasta 980 20 1 2 100000 100000 10 30 0.1 > tests/samp_${i}.fastq
+done
+
+# Extreme max tests (2 tests with no wildcards + 3 tests with wildcards)
+for i in {26..27}
+do
+    ./gen_sig 1000 10000 10000 0.0 > tests/sig_${i}.fasta
+    ./gen_sample tests/sig_${i}.fasta 2180 20 1 2 200000 200000 10 30 0.0 > tests/samp_${i}.fastq
+done
+for i in {28..30}
+do
+    ./gen_sig 1000 10000 10000 0.1 > tests/sig_${i}.fasta
+    ./gen_sample tests/sig_${i}.fasta 2180 20 1 2 200000 200000 10 30 0.1 > tests/samp_${i}.fastq
+done
+```
+
+#### GPU Nodes Used
+
+To test on `a100-40 MIG GPU`, we use node `xgph10`. To test on `h100-96 GPU`, we use node `xgpi0`.
+
+#### Execution Time Measurement
+
+The scripts `gpu_benchmark_{a/h}.sh` and `gpu_job_{a/h}.sh` are used with `sbatch` to run the benchmark and our implementation against all the tests generated above. Since `gpu_job_{a/h}.sh` only compiles the `kernel_skeleton.cu` file, we need to replace it with the version of the kernel that we want to test each time, such as `kernel_without_opt1.cu` and `kernel_without_opt2.cu`.
+
+The overall time measurement of the `runMatcher` function is extracted from the standard error stream of the job output at the line containing `(FOR AUTOMATED CHECKING) Total runMatcher time:`. We extract these measurements through a helper script `extract_time.py` and store them in the CSV files `a100-40.csv` and `h100-96.csv` in the folder `report_data/optimization` for easier analysis. These CSV files are shown below for reference.
+
+```{r}
+data_1 <- read_csv("report_data/optimization/a100-40.csv")
+data_2 <- read_csv("report_data/optimization/h100-96.csv")
+knitr::kable(data_1, caption = "A100-40")
+knitr::kable(data_2, caption = "H100-96")
+```

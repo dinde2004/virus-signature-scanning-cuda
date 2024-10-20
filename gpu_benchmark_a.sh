@@ -8,7 +8,7 @@
 #SBATCH --constraint=xgph
 #SBATCH --time=01:00:00
 #SBATCH --output=output_%N_%j_benchmark_a.slurmlog
-#SBATCH --error=error_%N_%j.slurmlog
+#SBATCH --error=error_%N_%j_benchmark_h.slurmlog
 
 echo "Job is running on $(hostname), started at $(date)"
 
@@ -17,7 +17,7 @@ nvidia-smi
 
 # Run the benchmark
 echo -e "\n====> Running...\n"
-for i in {0..9}
+for i in {1..30}
 do
     ./bench-a100 tests/samp_${i}.fastq tests/sig_${i}.fasta > tests/out_${i}.ans
 done
