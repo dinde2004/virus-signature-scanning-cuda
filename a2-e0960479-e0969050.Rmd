@@ -3,8 +3,8 @@ title: "CS3210 - Assignment 2"
 author: "Doan Quoc Thinh (e0960479), Nguyen Cao Duy (e0969050)"
 date: "2024-10-21"
 output:
-  html_document: default
   pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -16,9 +16,33 @@ library(patchwork)
 
 ## Performance Optimization
 
-### Optimization 1: Caching unchanged velocity particles
+### Optimization 1: Organizing sample and signature data in a contiguous block
 
-In each timestep, we need to have a while loop to check for collisions. However, if there are 2 particles that does not change their velocities, so we know that it is not collide together in the next turn, so we are going to cache it. We realize that collision between 2 particles only occurs in an iteration when in its previous iteration, the velocity of at least one of them has been changed. Therefore, in each iteration, when we come to a particle which velocity is not changed, we skip it. If it gets velocity changed, another particle with velocity changed in the previous turn will be responsible to find that particle and change it. This has reduced so many redundant checks between particles, when unchanged velocity particles are cached and skipped.
+`kernel_without_opt1.cu` allocated memory and transferred data from host to device for each sample and signature separately. The first drawback is that this resulted in multiple `cudaMalloc` and `cudaMemcpy` calls as the number of samples and signatures increased. This will create more overhead as the GPU had to allocate many small chunks of memory and transfer data multiple times. The second drawback is that the data was not contiguous in memory on device. Based on our parallelization strategy, each thread accesses a pair of sample and signature data. If the data is not contiguous, each thread in a warp will access different memory locations, leading to scattered and non-coalesced memory accesses which can reduce performance.
+
+To optimize this, `kernel_skeleton.cu` first concatenated all sample sequences, sample qualities, and signature sequences into 3 contiguous strings on the host before allocating and transferring them to the device. In doing so, we need to add an extra step of calculating additional offset arrays and pass them to the kernel to access the correct data for each thread. However, the gain in performance from coalesced memory accesses outweighs the overhead of calculating the offsets.
+
+### Optimization 2: Swapping sample and signature access pattern
+
+`kernel_without_opt2.cu` coordinate the threads to share the same signature (`signature_idx` remains the same) but access different samples (`sample_idx` varies):
+
+```cpp
+int signature_idx = idx / num_samples;
+int sample_idx = idx % num_samples;
+```
+
+and `kernel_skeleton.cu` optimized it by coordinating the threads to share the same sample (`sample_idx` remains the same) but access different signatures (`signature_idx` varies):
+
+```cpp
+int sample_idx = idx / num_signatures;
+int signature_idx = idx % num_signatures;
+```
+
+This optimization works due to the length constraint of the samples and signatures being different (samples are at least **10 times** longer than signatures). Compared to the unoptimized code, our optimized code has a better utilization of cache as threads in a warp access the same memory location more often (sharing the same sample sequence, which is much longer than a signature) while access the different memory location (different signature sequences, which are much shorter than different sample sequences) less often.
+
+### Performance Comparison
+
+Based on the graph below, we can see that the optimized versions of the kernel outperformed the unoptimized versions and the benchmark on both `a100-40` and `h100-96` GPUs. Optimization 2 has a significant improvement to our implementation. Details of the tests used can be found in the appendix.
 
 ```{r}
 data_1 <- read_csv("report_data/optimization/a100-40.csv") %>% 
