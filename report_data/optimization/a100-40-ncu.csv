@@ -1,0 +1,9 @@
+Metric, Benchmark, Current, Without_Opt_1, Without_Opt_2 
+Memory Throughput [Mbyte/s or Gbyte/s], 34.82 Mbyte/s, 100.27 Mbyte/s, 61.02 Mbyte/s, 38.85 Gbyte/s
+Mem Busy [%], 93.66, 62.6, 91.62, 21.09
+L1/TEX Hit Rate [%], 92.51, 94.97, 95.55, 42.6
+Max Bandwidth [%], 34.63, 55.66, 32.83, 21.06
+L2 Hit Rate [%], 99.97, 99.54, 101.72, 94.71
+Mem Pipes Busy [%], 15.41, 32.43, 19.43, 6.45
+L2 Compression Success Rate [%], 0.0, 0.0, 0.0, 0
+L2 Compression Ratio, 0.0, 0.0, 0.0, 0

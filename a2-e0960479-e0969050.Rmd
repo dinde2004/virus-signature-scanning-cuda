@@ -14,6 +14,63 @@ library(tidyverse)
 library(patchwork)
 ```
 
+## Implementation Description
+
+### Algorithm
+
+Our algorithm is simple: We iterate through all pair of samples and signatures, and check each pair individually.
+For each pair, we just use a naive $\mathcal{O}(n*m)$ algorithm, where $n$ is length of sample and $m$ is length of signature,
+to iterate through each substring of length $m$ in the sample string and compare with the signature. One break condition is used to move to next substring if a mismatch is found, and another break condition is used to return the first (left-most) match found.
+
+### Parallelization strategy
+
+For each thread in the GPU, we allocate a task to process a pair of sample and signature (this is the kernel).
+For the input files, we handle them by flatten the sample and sequence vector into a 1D array of characters,
+and have additional arrays to store the offset of each sample and signature in the flattened array.
+We decided to flatten the array to have a contiguous memory access pattern, which can speed up the data access time of GPU.
+
+### Grid and block dimensions
+
+We used only **1** dimension for the grid and block as we only have 1D array of samples and signatures.
+The number of threads allocated to each block will be divisible by **32** (warp size) to ensure that no threads in any warp idle.
+The maximum number of threads can be allocated to each block is limited to **1024**.
+We chose the number of threads per block to be **256**, which is a multiple of 32 and less than 1024.
+We also tried other thread sizes such as 128 or 512, but there is no significant difference in performance.
+For the number of blocks, we calculate it as $\lceil \frac{\text{total number of pairs of sample and signature}}{\text{number of threads allocated to each block}} \rceil$.
+The number of threads allocated will be slightly greater than the number of pairs of sample and signature,
+in order to utilize warps, and make sure that no pairs are left behind.
+
+### Memory handling
+
+We flatten the sample and signature array to 1D arrays, and pass it to the kernel. Then, after finishing calculations, we transfer the results back to host in a 1D array `match_matrix`. In the kernel, we only use global memory to access data and decided not to use shared memory. Although consecutive threads in the block may access the same sample (based on our implementation), each sample is a bit too long (maximum is 200000 characters for the sequence and another 200000 characters for the quality) at about **400 KB** in total, while the max shared memory capacity per SM is only **228 KB** for the H100 GPU and **164 KB** for the A100 GPU.^[https://docs.nvidia.com/cuda/hopper-tuning-guide/index.html] Even though we can load only the sample sequence (at most 200 KB) into shared memory for the H100 GPU, we would still have bottleneck at the global memory access for the sample quality (of the same length as the sample sequence), and this approach would still not work for the A100 GPU. Moreover, we would then need to use the number of samples as the grid size (to make sure all threads in the block access the same sample), and the number of signatures as the block size, which might not be efficient as it might not be in multiples of 32 anymore.
+
+\newpage
+## Input Factors Analysis
+
+### Sample and signature length
+
+The program should takes more time (at a linear rate) when the sample and signature length increases.
+This is because in each kernel, the time complexity to complete the pair checking is $\mathcal{O}(n*m)$,
+where $n$ is the length of the sample and $m$ is the length of the signature.
+
+### Number of samples and signatures
+
+The program should takes more time when the sample and signature length increases.
+This is because the both the H100 and A100 GPU should only be able to execute at about **200000** threads simultaneously (each SM can execute at most 2048 threads simultaneously and there are slightly more than 100 SMs in both GPUs^[https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/ and https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/]), while the minimum number of threads we need is already at least **500000** (for 1000 samples and 500 signatures).
+Therefore, if there are more threads be launched, some of them would need to wait for previous threads to finish, thus increasing the overall runtime.
+
+### Percentage of wildcards
+
+The percentage of wildcards should not affect the performance of the program much considering how our string matching algorithm works.
+More wildcards might make each thread take slighter longer time to get a character mismatch when we compare a substring of the sample with the signature (so the break condition might happen later than before), but the overall time complexity is still $\mathcal{O}(n*m)$.
+In the worst case, each thread still needs to check all the substrings of the sample with the signature.
+
+### Percentage of signatures matching samples
+
+Similar to above, the percentage of signatures matching samples should not affect the performance of the program.
+More signatures matching samples might make each thread take slighter shorter time to finish the work, as it might find a match earlier than before and break out of the loop earlier. However, the overall time complexity is still $\mathcal{O}(n*m)$ for each thread.
+
+\newpage
 ## Performance Optimization
 
 ### Optimization 1: Organizing sample and signature data in a contiguous block
@@ -65,6 +122,45 @@ plot_2 <- ggplot(data_2, aes(x = Version, y = Time)) +
 
 plot <- plot_1 + plot_2
 plot
+```
+
+Looking at the memory workload for each version, the current implementation `kernel_skeleton.cu` also has a better L1 cache hit rate and memory bandwidth utilization compared to the rest (significantly higher than `kernel_without_opt2.cu`).
+
+```{r}
+data <- read_csv("report_data/optimization/a100-40-ncu.csv")
+
+# Filter only the L1/TEX Hit Rate and Max Bandwidth rows
+filtered_data <- data %>%
+  filter(Metric %in% c("L1/TEX Hit Rate [%]", "Max Bandwidth [%]")) %>%
+  select(Metric, Benchmark, Current, Without_Opt_1, Without_Opt_2)
+
+# Reshape the data for plotting using pivot_longer
+filtered_data_long <- filtered_data %>%
+  pivot_longer(cols = Benchmark:Without_Opt_2, names_to = "Version", values_to = "Value")
+
+# Split the data into L1 Hit Rate and Max Bandwidth
+l1_hit_rate_long <- filtered_data_long %>%
+  filter(Metric == "L1/TEX Hit Rate [%]")
+
+max_bandwidth_long <- filtered_data_long %>%
+  filter(Metric == "Max Bandwidth [%]")
+
+# Create the L1 Hit Rate plot
+plot_l1_hit_rate <- ggplot(l1_hit_rate_long, aes(x = Version, y = Value)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(x = "Version", y = "L1/TEX Hit Rate (%)") +
+  theme_minimal()
+
+# Create the Max Bandwidth plot
+plot_max_bandwidth <- ggplot(max_bandwidth_long, aes(x = Version, y = Value)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(x = "Version", y = "Max Bandwidth (%)") +
+  theme_minimal()
+
+combined_plot <- plot_l1_hit_rate / plot_max_bandwidth
+combined_plot
 ```
 
 \newpage
@@ -131,4 +227,13 @@ data_1 <- read_csv("report_data/optimization/a100-40.csv")
 data_2 <- read_csv("report_data/optimization/h100-96.csv")
 knitr::kable(data_1, caption = "A100-40")
 knitr::kable(data_2, caption = "H100-96")
+```
+
+#### Memory Workload Measurement
+
+We use `ncu --section MemoryWorkloadAnalysis --clock-control none` command on the `a100-40` GPU to get the memory workload analysis of each kernel on the **15th** test (among the 30 tests mentioned above). Raw `ncu-rep` files are stored in `ncu` folder while the measurement is extracted and combined into a single CSV file `a100-40-ncu.csv` in the folder `report_data/optimization` for easier analysis. The CSV file is shown below for reference.
+
+```{r}
+data <- read_csv("report_data/optimization/a100-40-ncu.csv")
+knitr::kable(data, caption = "Memory Workload Measurement on A100-40")
 ```
