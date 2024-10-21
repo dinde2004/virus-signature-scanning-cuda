@@ -404,21 +404,21 @@ are left behind.</p>
 <h3>Memory handling</h3>
 <p>We flatten the sample and signature array to 1D arrays, and pass it
 to the kernel. Then, after finishing calculations, we transfer the
-results back to host in a 1D array <code>match_matrix</code>.</p>
-<p>In the kernel, we only use global memory to access data and decided
-not to use shared memory. Although consecutive threads in the block may
-access the same sample (based on our implementation), each sample is a
-bit too long (maximum is 200000 characters for the sequence and another
-200000 characters for the quality) at about <strong>400 KB</strong> in
-total, while the max shared memory capacity per SM is only <strong>228
+results back to host in a 1D array <code>match_matrix</code>. In the
+kernel, we only use global memory to access data and decided not to use
+shared memory. Although consecutive threads in the block may access the
+same sample (based on our implementation), each sample is a bit too long
+(maximum is 200000 characters for the sequence and another 200000
+characters for the quality) at about <strong>400 KB</strong> in total,
+while the max shared memory capacity per SM is only <strong>228
 KB</strong> for the H100 GPU and <strong>164 KB</strong> for the A100
-GPU.<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a></p>
-<p>Even though we can load only the sample sequence (at most 200 KB)
-into shared memory for the H100 GPU, we would still have bottleneck at
-the global memory access for the sample quality (of the same length as
-the sample sequence), and this approach would still not work for the
-A100 GPU. Moreover, we would then need to use the number of samples as
-the grid size (to make sure all threads in the block access the same
+GPU.<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a>
+Even though we can load only the sample sequence (at most 200 KB) into
+shared memory for the H100 GPU, we would still have bottleneck at the
+global memory access for the sample quality (of the same length as the
+sample sequence), and this approach would still not work for the A100
+GPU. Moreover, we would then need to use the number of samples as the
+grid size (to make sure all threads in the block access the same
 sample), and the number of signatures as the block size, which might not
 be efficient as it might not be in multiples of 32 anymore.</p>
 <div style="page-break-after: always;"></div>
@@ -438,7 +438,7 @@ complexity to complete the pair checking is <span class="math inline">\(\mathcal
 length increases. This is because the both the H100 and A100 GPU should
 only be able to execute at about <strong>200000</strong> threads
 simultaneously (each SM can execute at most 2048 threads simultaneously
-and there are slightly more than 100 SMs in both GPUs<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a>), while the minimum
+and there are slightly more than 100 SMs in both GPUs<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a> <a href="#fn3" class="footnote-ref" id="fnref3"><sup>3</sup></a>), while the minimum
 number of threads we need is already at least <strong>500000</strong>
 (for 1000 samples and 500 signatures). Therefore, if there are more
 threads be launched, some of them would need to wait for previous
@@ -1148,8 +1148,8 @@ is shown below for reference.</p>
 <hr />
 <ol>
 <li id="fn1"><p><a href="https://docs.nvidia.com/cuda/hopper-tuning-guide/index.html" class="uri">https://docs.nvidia.com/cuda/hopper-tuning-guide/index.html</a><a href="#fnref1" class="footnote-back">↩︎</a></p></li>
-<li id="fn2"><p><a href="https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/" class="uri">https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/</a>
-and <a href="https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/" class="uri">https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/</a><a href="#fnref2" class="footnote-back">↩︎</a></p></li>
+<li id="fn2"><p><a href="https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/" class="uri">https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/</a><a href="#fnref2" class="footnote-back">↩︎</a></p></li>
+<li id="fn3"><p><a href="https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/" class="uri">https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/</a><a href="#fnref3" class="footnote-back">↩︎</a></p></li>
 </ol>
 </div>
 
