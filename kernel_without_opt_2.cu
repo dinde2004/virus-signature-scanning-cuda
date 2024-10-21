@@ -19,8 +19,8 @@ __global__ void matchStringsKernel(
     if (idx < total_pairs)
     {
         // Get the sample and signature indices
-        int sample_idx = idx / num_signatures;
-        int signature_idx = idx % num_signatures;
+        int sample_idx = idx % num_samples;
+        int signature_idx = idx / num_samples;
 
         // Get the sample and signature sequences
         int sample_start = d_sample_offsets[sample_idx];
